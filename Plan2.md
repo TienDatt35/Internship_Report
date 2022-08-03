@@ -24,8 +24,9 @@
 
 [3. VXLAN Lab ](#3)
 
+[4. VXLAN Lab 2](#4)
 
-[4. Tham khảo ](#4)
+[5. Tham khảo ](#5)
 
 ---
 
@@ -80,7 +81,8 @@ VXLAN tạo một mạng vật lý layer 2 trên lớp mạng IP. Dưới đây 
 
    - **Encapsulate**: Đóng gói những gói tin ethernet thông thường trong một header mới. Ví dụ: trong công nghệ overlay IPSec VPN, đóng gói gói tin IP thông thường vào một IP header khác. 
 
-   - **VTEP**: Việc liên lạc được thiết lập giữa 2 đầu tunnel end points (đường ống).
+   - **VTEP**: VTEP – Virtual Tunnel Endpoint: là các thiết bị phần cứng hoặc phần mềm, được đặt ở các vùng biên của mạng, chịu trách nhiệm khởi tạo VXLAN Tunnel và thực hiện đóng gói và giải mã VXLAN
+   
 
 - Khi bạn áp dụng vào với công nghệ overlay trong VXLAN, bạn sẽ thấy VXLAN sẽ đóng gói một frame MAC thông thường vào một UDP header. Và tất cả các host tham gia vào VXLAN thì hoạt động như một tunnel end points. Chúng gọi là Virtual Tunnel Endpoints (VTEPs)
 
@@ -385,7 +387,114 @@ The packets of the underlay network is more interesting.
 - The sixth packet is the ICMP reply packet of the overlay network. Similar to 5.
 
 <a name = '4'></a>
-# 4. Tham khảo
+# 4. VXLAN Lab 2
+
+## 4.1. Mô hình
+
+![img](images/4.1.png)
+
+### 4.1.1.	Chuẩn bị: 
+
+Yêu cầu 2 máy host
+
+- Chạy ubuntu desktop 14.04. 
+
+- Cài sẵn KVM, virt-manager, OpenvSwitch.
+
+- Trên mỗi máy đã có sẵn một máy ảo VM. Ở đây chỉ dùng tạo máy ảo cirros cho nhỏ gọn.
+
+- Có kiến thức cơ bản về [VXLAN](../4.Tim_hieu_VXLAN.md), [KVM](../KVM) và [Openvswitch](./2.Tim_hieu_Open_Vswitch.md).
+
+### 4.1.2.	Mục đích bài lab: 
+
+- Hiểu cơ bản vê hoạt động của VXLAN.
+
+- Phân tích bản tin VXLAN.
+
+- Cấu hình cơ bản với Openvswitch
+
+
+## 4.2.	Cấu hình
+
+- Cấu hình 2 HOST 1 và HOST cùng dải mạng 10.10.10.0/24
+
+- Trong mô hình này:
+
+	-	**HOST 1**: eth0 10.10.10.120/24
+
+	-	**HOST 2**: eth0 10.10.10.50/24
+
+
+### 4.2.1.	Cấu hình tại HOST 1
+
+Cấu hình hai bridge **ovsbr0** - kết nối với các VM, và tạo kết nối tunnel  sử dụng VXLAN tunnel và **ovsbr1** - tunnel endpoint kết nối với card eth0 của máy HOST. Thực chất không cần sử dụng một tunnel endpoint tách biệt như vậy. Tuy nhiên trong thực tế, việc này cho phép tách biệt quản lý lưu lượng của hypervisor và quản lý lưu lượng VXLAN, cho phép sử dụng mạng quản lý bên ngoài.
+
+```
+# cau hinh ovsovsovsbr1 lam tunnel endpoint (VTEP)
+sudo ovs-vsctl add-br ovsovsbr1
+sudo ovs-vsctl add-port ovsovsbr1 eth0
+sudo ifconfig eth0 0
+sudo ifconfig ovsovsbr1 10.10.10.120/24
+# cau hinh ovsbr0 và vxl tunnel interface
+sudo ovs-vsctl add-br ovsbr0
+sudo ifconfig ovsbr0 172.16.10.1/24
+sudo ovs-vsctl add-port ovsbr0 vxl0 -- set interface vxl0 type=vxlan options:remote_ip=10.10.10.50
+```
+
+### 4.2.2.	Cấu hình trên HOST 2
+
+Cấu hình tương tự:
+
+```    
+sudo ovs-vsctl add-br ovsbr1
+sudo ovs-vsctl add-port ovsbr1 eth0
+sudo ifconfig eth0 0
+sudo ifconfig ovsbr1 10.10.10.50/24
+sudo ovs-vsctl add-br ovsbr0
+sudo ifconfig ovsbr0 172.16.10.2/24
+sudo ovs-vsctl add-port ovsbr0 vxl0 -- set interface vxl0 type=vxlan options:remote_ip=10.10.10.120
+```
+
+### 4.2.3.	Tạo mạng VXLAN trong mỗi host
+
+- Thực hiện trên cả 2 HOST.
+
+- Tạo một libvirt network tương ứng với bridge ovsbr0 để kết nối các máy ảo vào. Cấu hình file `vi ovs-vxlan.xml` định nghĩa ovs-vxlan network như sau:
+
+	```
+	<network>
+	  <name>ovs-vxlan</name>
+	  <forward mode='bridge'/>
+	  <bridge name='ovsbr0'/>
+	  <virtualport type='openvswitch'/>
+	</network>
+	```
+
+- Lưu lại file cấu hình. Áp dụng cấu hình tạo network mới:
+
+	```
+	virsh net-define ovs-vxlan.xml
+	virsh net-start ovs-vxlan
+	virsh net-autostart ovs-vxlan
+	```
+
+### 4.2.4.	Kiểm tra kết nối
+
+Trên HOST 1 tạo máy ảo cirros1, trên HOST 2 tạo máy ảo cirros 2. Cả 2 máy đều kết nối tới mạng ovs-vxlan gán với bridge ovsbr0 trên mỗi HOST và được cấu hình địa chỉ tĩnh (dải 172.16.10.0/24). Tiến hành ping thử giữa hai máy. Kết quả ping thành công như sau:
+
+![img](images/4.2.png)
+
+
+# 3.	Phân tích trên wireshark
+Phân tích một gói tin ICMP bắt được trên interface eth0 có kết quả như sau.
+
+![img](images/4.3.png)
+
+
+**Kết luận**: Có thể thấy rằng layer 2 frame (chứa thông tin ICMP/IP giữa hai VM cirros1:  172.16.10.10 và  VM cirros2: 172.16.10.20) được đóng gói hoàn toàn trong bản tin VXLAN của các địa chỉ ngoài của 2 HOST:  10.10.10.120 và 10.10.10.50.
+
+<a name = '5'></a>
+# 5. Tham khảo
 
 [1] https://github.com/hocchudong/thuctap012017/blob/master/TamNT/Virtualization/docs/4.Tim_hieu_VXLAN.md  
 [2] https://hechao.li/2018/05/15/VXLAN-Hands-on-Lab/
