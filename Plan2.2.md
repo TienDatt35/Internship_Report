@@ -128,7 +128,7 @@ vtep-ctl add-ucast-remote ls0 00:00:00:00:00:02 10.10.10.50
 Còn 1 tip cuối :))  
 Do các gói đầu tiên thường là yêu cầu broadcast ARP. Trong cơ sở dữ liệu VTEP, bảng mcast_macs_remote chỉ định cách xử lý lưu lượng BUM. Vì thế cần thêm 1 lệnh để thông báo cho switch: đối với các gói có địa chỉ đích không xác định (không xuất hiện trong bảng từ xa ucast_macs), hãy gửi chúng đến 10.10.10.50 
 ``` 
-vtep-ctl add-mcast-remote ls0 unknown-dst 10.1.0.1
+vtep-ctl add-mcast-remote ls0 unknown-dst 10.10.10.50
 ```
 
 
@@ -142,7 +142,7 @@ ovs-vsctl add-br br0
 
 ### Create a Port (VM)
 ```
-ovs-vsctl add-port br0 vm2 tag=20 -- set interface vm1 type=internal
+ovs-vsctl add-port br0 vm2 tag=20 -- set interface vm2 type=internal
 ```
 
 ### Set the Addresses
